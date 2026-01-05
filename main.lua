@@ -1,133 +1,101 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
-local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
-local character = player.Character or player.CharacterAdded:Wait()
-local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+local LocalPlayer = Players.LocalPlayer
 
--- ScreenGui作成
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "PalletSpawnerGUI"
-screenGui.ResetOnSpawn = false
-screenGui.IgnoreGuiInset = true
-screenGui.Parent = playerGui
+-- リモートの取得（提供されたログに基づく）
+local remoteFunction = ReplicatedStorage:WaitForChild("MenuToys"):WaitForChild("SpawnToyRemoteFunction")
 
--- Mobile/PCスケーリング対応
-local uiScale = Instance.new("UIScale")
-uiScale.Scale = 1
-uiScale.Parent = screenGui
+-- 設定
+local ITEM_NAME = "PalletLightBrown" -- ログにあったアイテム名
+local SPAWN_DISTANCE = 5 -- 自分の何スタッド前に出すか
+local isSpamming = false -- ON/OFFの状態
 
-local aspectRatio = Instance.new("UIAspectRatioConstraint")
-aspectRatio.AspectRatio = 16/9
-aspectRatio.Parent = screenGui
+-- UI作成
+local ScreenGui = Instance.new("ScreenGui")
+local MainFrame = Instance.new("Frame")
+local TitleLabel = Instance.new("TextLabel")
+local ToggleButton = Instance.new("TextButton")
+local UICorner = Instance.new("UICorner")
+local UICornerBtn = Instance.new("UICorner")
 
--- 右側Frame（小型化）
-local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 110, 0, 60)
-mainFrame.Position = UDim2.new(1, -120, 0.5, -30)
-mainFrame.AnchorPoint = Vector2.new(1, 0.5)
-mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-mainFrame.BackgroundTransparency = 0.3
-mainFrame.BorderSizePixel = 0
-mainFrame.Parent = screenGui
+ScreenGui.Name = "PalletSpawnerMini"
+ScreenGui.Parent = game.CoreGui
 
-local frameCorner = Instance.new("UICorner")
-frameCorner.CornerRadius = UDim.new(0, 10)
-frameCorner.Parent = mainFrame
+-- メインフレーム（サイズを小さくしました：150x80）
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+MainFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
+MainFrame.Size = UDim2.new(0, 150, 0, 80) -- かなりコンパクトに設定
+MainFrame.Active = true
+MainFrame.Draggable = true -- ドラッグ可能
 
-local frameStroke = Instance.new("UIStroke")
-frameStroke.Color = Color3.fromRGB(100, 150, 255)
-frameStroke.Thickness = 1.5
-frameStroke.Parent = mainFrame
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = MainFrame
 
--- タイトル（小型）
-local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, 0, 0.4, 0)
-titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Pallet Spawn"
-titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleLabel.TextScaled = true
-titleLabel.Font = Enum.Font.GothamBold
-titleLabel.Parent = mainFrame
+-- タイトル
+TitleLabel.Parent = MainFrame
+TitleLabel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.BackgroundTransparency = 1.000
+TitleLabel.Position = UDim2.new(0, 0, 0, 5)
+TitleLabel.Size = UDim2.new(1, 0, 0, 20)
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.Text = "Pallet Spawner"
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextSize = 12.000
 
--- Spawnボタン
-local spawnButton = Instance.new("TextButton")
-spawnButton.Size = UDim2.new(0.9, 0, 0.5, 0)
-spawnButton.Position = UDim2.new(0.05, 0, 0.45, 0)
-spawnButton.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
-spawnButton.Text = "Spawn Pallet"
-spawnButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-spawnButton.TextScaled = true
-spawnButton.Font = Enum.Font.GothamSemibold
-spawnButton.BorderSizePixel = 0
-spawnButton.Parent = mainFrame
+-- トグルボタン
+ToggleButton.Parent = MainFrame
+ToggleButton.BackgroundColor3 = Color3.fromRGB(255, 60, 60) -- 最初は赤（OFF）
+ToggleButton.Position = UDim2.new(0.1, 0, 0.4, 0)
+ToggleButton.Size = UDim2.new(0.8, 0, 0.45, 0)
+ToggleButton.Font = Enum.Font.GothamBold
+ToggleButton.Text = "OFF"
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.TextSize = 14.000
 
-local buttonCorner = Instance.new("UICorner")
-buttonCorner.CornerRadius = UDim.new(0, 8)
-buttonCorner.Parent = spawnButton
+UICornerBtn.CornerRadius = UDim.new(0, 6)
+UICornerBtn.Parent = ToggleButton
 
--- ホバー/クリックアニメーション
-local hoverTween = TweenService:Create(spawnButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(0, 200, 0)})
-local normalTween = TweenService:Create(spawnButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(0, 170, 0)})
+-- スポーン処理関数
+local function spawnItem()
+    local character = LocalPlayer.Character
+    if character and character:FindFirstChild("HumanoidRootPart") then
+        -- 自分の位置(CFrame)を取得し、向いている方向へ少し(SPAWN_DISTANCE)進めた位置を計算
+        local hrpCFrame = character.HumanoidRootPart.CFrame
+        local spawnPos = hrpCFrame * CFrame.new(0, 1, -SPAWN_DISTANCE) -- Yに1足して少し浮かせ、Zで前に出す
+        
+        -- リモート実行 (pcallでエラー落ち防止)
+        pcall(function()
+            remoteFunction:InvokeServer(ITEM_NAME, spawnPos)
+        end)
+    end
+end
 
-spawnButton.MouseEnter:Connect(function() hoverTween:Play() end)
-spawnButton.MouseLeave:Connect(function() normalTween:Play() end)
-
--- スポーン機能
-spawnButton.MouseButton1Click:Connect(function()
-    spawnButton.Text = "Spawning..."
-    spawnButton.BackgroundColor3 = Color3.fromRGB(255, 170, 0)
+-- ボタンのクリックイベント
+ToggleButton.MouseButton1Click:Connect(function()
+    isSpamming = not isSpamming
     
-    local spawnRemote = ReplicatedStorage:WaitForChild("MenuToys"):WaitForChild("SpawnToyRemoteFunction")
-    
-    -- キャラクター更新（リスポーン対応）
-    character = player.Character or player.CharacterAdded:Wait()
-    humanoidRootPart = character:WaitForChild("HumanoidRootPart")
-    
-    -- 目の前位置計算（前方5スタッド、高さ3スタッド）
-    local spawnCFrame = humanoidRootPart.CFrame * CFrame.new(0, 3, -5)
-    
-    local success, result = pcall(function()
-        return spawnRemote:InvokeServer("PalletLightBrown", spawnCFrame)
-    end)
-    
-    if success then
-        print("Pallet spawned successfully.")
+    if isSpamming then
+        ToggleButton.Text = "ON (Spamming)"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(60, 255, 60) -- 緑
     else
-        warn("Spawn failed: " .. tostring(result))
-    end
-    
-    wait(0.5)
-    spawnButton.Text = "Spawn Pallet"
-    normalTween:Play()
-end)
-
--- ドラッグ機能（Mobileタッチ対応）
-local dragging = false
-local dragStart = nil
-local startPos = nil
-
-mainFrame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = mainFrame.Position
+        ToggleButton.Text = "OFF"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(255, 60, 60) -- 赤
     end
 end)
 
-mainFrame.InputChanged:Connect(function(input)
-    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local delta = input.Position - dragStart
-        mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+-- ループ処理（task.spawnでメインスレッドを止めないように実行）
+task.spawn(function()
+    while true do
+        if isSpamming then
+            spawnItem()
+        end
+        -- サーバー負荷とクラッシュ防止のため、ごく短い待機時間を入れます
+        -- InvokeServerはサーバーからの返答を待つため、wait()よりtask.wait()が安全です
+        task.wait() 
     end
 end)
-
-mainFrame.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = false
-    end
-end)
-
-print("Compact Pallet Spawner GUI loaded. Button spawns Pallet in front of you.")
