@@ -1,14 +1,15 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
 
--- ScreenGui作成（自作UI）
+-- ScreenGui作成
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "PlankSpawnerGUI"
+screenGui.Name = "PalletSpawnerGUI"
 screenGui.ResetOnSpawn = false
 screenGui.IgnoreGuiInset = true
 screenGui.Parent = playerGui
@@ -19,35 +20,33 @@ uiScale.Scale = 1
 uiScale.Parent = screenGui
 
 local aspectRatio = Instance.new("UIAspectRatioConstraint")
-aspectRatio.AspectRatio = 16/9  -- 標準アスペクト比でMobile対応
+aspectRatio.AspectRatio = 16/9
 aspectRatio.Parent = screenGui
 
--- 右側Frame（半透明、角丸）
+-- 右側Frame（小型化）
 local mainFrame = Instance.new("Frame")
-mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 220, 0, 120)
-mainFrame.Position = UDim2.new(1, -230, 0.5, -60)
+mainFrame.Size = UDim2.new(0, 110, 0, 60)
+mainFrame.Position = UDim2.new(1, -120, 0.5, -30)
 mainFrame.AnchorPoint = Vector2.new(1, 0.5)
 mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-mainFrame.BackgroundTransparency = 0.2
+mainFrame.BackgroundTransparency = 0.3
 mainFrame.BorderSizePixel = 0
 mainFrame.Parent = screenGui
 
 local frameCorner = Instance.new("UICorner")
-frameCorner.CornerRadius = UDim.new(0, 12)
+frameCorner.CornerRadius = UDim.new(0, 10)
 frameCorner.Parent = mainFrame
 
 local frameStroke = Instance.new("UIStroke")
 frameStroke.Color = Color3.fromRGB(100, 150, 255)
-frameStroke.Thickness = 2
+frameStroke.Thickness = 1.5
 frameStroke.Parent = mainFrame
 
--- タイトル（オプション、シンプルに）
+-- タイトル（小型）
 local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, 0, 0.3, 0)
-titleLabel.Position = UDim2.new(0, 0, 0, 0)
+titleLabel.Size = UDim2.new(1, 0, 0.4, 0)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Pallet Spawner"
+titleLabel.Text = "Pallet Spawn"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextScaled = true
 titleLabel.Font = Enum.Font.GothamBold
@@ -55,8 +54,8 @@ titleLabel.Parent = mainFrame
 
 -- Spawnボタン
 local spawnButton = Instance.new("TextButton")
-spawnButton.Size = UDim2.new(0.9, 0, 0.6, 0)
-spawnButton.Position = UDim2.new(0.05, 0, 0.35, 0)
+spawnButton.Size = UDim2.new(0.9, 0, 0.5, 0)
+spawnButton.Position = UDim2.new(0.05, 0, 0.45, 0)
 spawnButton.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
 spawnButton.Text = "Spawn Pallet"
 spawnButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -66,64 +65,46 @@ spawnButton.BorderSizePixel = 0
 spawnButton.Parent = mainFrame
 
 local buttonCorner = Instance.new("UICorner")
-buttonCorner.CornerRadius = UDim.new(0, 10)
+buttonCorner.CornerRadius = UDim.new(0, 8)
 buttonCorner.Parent = spawnButton
 
-local buttonStroke = Instance.new("UIStroke")
-buttonStroke.Color = Color3.fromRGB(0, 255, 0)
-buttonStroke.Thickness = 1.5
-buttonStroke.Parent = spawnButton
-
--- ホバー/クリックアニメーション（Tween）
+-- ホバー/クリックアニメーション
 local hoverTween = TweenService:Create(spawnButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(0, 200, 0)})
-local clickTween = TweenService:Create(spawnButton, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {Size = UDim2.new(0.85, 0, 0.55, 0)})
 local normalTween = TweenService:Create(spawnButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(0, 170, 0)})
 
-spawnButton.MouseEnter:Connect(function()
-    hoverTween:Play()
-end)
+spawnButton.MouseEnter:Connect(function() hoverTween:Play() end)
+spawnButton.MouseLeave:Connect(function() normalTween:Play() end)
 
-spawnButton.MouseLeave:Connect(function()
-    normalTween:Play()
-end)
-
-spawnButton.MouseButton1Down:Connect(function()
-    clickTween:Play()
-end)
-
-spawnButton.MouseButton1Up:Connect(function()
-    spawnButton.Size = UDim2.new(0.9, 0, 0.6, 0)
-end)
-
--- スポーン機能（ここを調整）
+-- スポーン機能
 spawnButton.MouseButton1Click:Connect(function()
     spawnButton.Text = "Spawning..."
     spawnButton.BackgroundColor3 = Color3.fromRGB(255, 170, 0)
     
-    -- RemoteEventを探してFireServer（調整必要）
-    local spawnRemote = ReplicatedStorage:FindFirstChild("SpawnItem") or  -- 例1
-                        ReplicatedStorage:FindFirstChild("ItemBuilder") or  -- 例2
-                        ReplicatedStorage:FindFirstChild("PlaceToy") or     -- 例3
-                        ReplicatedStorage:FindFirstChild("BuildingRemote")  -- 例4
+    local spawnRemote = ReplicatedStorage:WaitForChild("MenuToys"):WaitForChild("SpawnToyRemoteFunction")
     
-    if spawnRemote and spawnRemote:IsA("RemoteEvent") then
-        -- Plank Maker spawn例（IDまたは名前で調整）
-        spawnRemote:FireServer("PlankMaker")  -- 文字列の場合
-        -- または: spawnRemote:FireServer(6532318356)  -- IDの場合（音声でないモデルIDを確認）
-        -- 位置指定例: spawnRemote:FireServer("PlankMaker", player.Character.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0))
-        
-        wait(1)
+    -- キャラクター更新（リスポーン対応）
+    character = player.Character or player.CharacterAdded:Wait()
+    humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+    
+    -- 目の前位置計算（前方5スタッド、高さ3スタッド）
+    local spawnCFrame = humanoidRootPart.CFrame * CFrame.new(0, 3, -5)
+    
+    local success, result = pcall(function()
+        return spawnRemote:InvokeServer("PalletLightBrown", spawnCFrame)
+    end)
+    
+    if success then
+        print("Pallet spawned successfully.")
     else
-        warn("Spawn Remote not found. Use RemoteSpy to find it.")
+        warn("Spawn failed: " .. tostring(result))
     end
     
-    -- リセット
     wait(0.5)
     spawnButton.Text = "Spawn Pallet"
     normalTween:Play()
 end)
 
--- ドラッグ機能（オプション、Mobileタッチ対応）
+-- ドラッグ機能（Mobileタッチ対応）
 local dragging = false
 local dragStart = nil
 local startPos = nil
@@ -149,4 +130,4 @@ mainFrame.InputEnded:Connect(function(input)
     end
 end)
 
-print("Plank Spawner GUI loaded successfully. Adjust Remote in script if needed.")
+print("Compact Pallet Spawner GUI loaded. Button spawns Pallet in front of you.")
