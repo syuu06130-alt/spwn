@@ -1,93 +1,67 @@
+-- LocalScript
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
--- 重複削除
+-- UI重複防止
 if PlayerGui:FindFirstChild("PalletSpawnerUI") then
-    PlayerGui.PalletSpawnerUI:Destroy()
+	PlayerGui.PalletSpawnerUI:Destroy()
 end
 
--- --- UI作成 ---
+-- === UI ===
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "PalletSpawnerUI"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = PlayerGui
 
 local Frame = Instance.new("Frame")
-Frame.Name = "MainFrame"
-Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-Frame.BorderSizePixel = 0
-Frame.AnchorPoint = Vector2.new(1, 0.5)
--- 0.35に設定（前回の0.4よりさらに少し上）
-Frame.Position = UDim2.new(1, -20, 0.35, 0) 
-Frame.Size = UDim2.new(0, 120, 0, 50)
+Frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+Frame.AnchorPoint = Vector2.new(1,0.5)
+Frame.Position = UDim2.new(1,-20,0.4,0)
+Frame.Size = UDim2.new(0,120,0,50)
 Frame.Parent = ScreenGui
 
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 8)
-UICorner.Parent = Frame
+Instance.new("UICorner", Frame).CornerRadius = UDim.new(0,8)
 
-local SpawnButton = Instance.new("TextButton")
-SpawnButton.Name = "SpawnBtn"
-SpawnButton.Parent = Frame
-SpawnButton.BackgroundColor3 = Color3.fromRGB(255, 85, 0) -- 目立つオレンジに変更
-SpawnButton.Size = UDim2.new(1, -10, 1, -10)
-SpawnButton.Position = UDim2.new(0, 5, 0, 5)
-SpawnButton.Font = Enum.Font.GothamBold
-SpawnButton.Text = "Spawn Pallet"
-SpawnButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-SpawnButton.TextSize = 14
-SpawnButton.AutoButtonColor = true
+local Button = Instance.new("TextButton")
+Button.Size = UDim2.new(1,-10,1,-10)
+Button.Position = UDim2.new(0,5,0,5)
+Button.Text = "Spawn Pallet"
+Button.Font = Enum.Font.GothamBold
+Button.TextSize = 14
+Button.TextColor3 = Color3.new(1,1,1)
+Button.BackgroundColor3 = Color3.fromRGB(0,170,255)
+Button.Parent = Frame
 
-local ButtonCorner = Instance.new("UICorner")
-ButtonCorner.CornerRadius = UDim.new(0, 6)
-ButtonCorner.Parent = SpawnButton
+Instance.new("UICorner", Button).CornerRadius = UDim.new(0,6)
 
--- --- 座標計算と実行関数 ---
-local function doSpawn()
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if not root then return end
+-- === RemoteEvent取得 ===
+local remoteEvent
+local menuToys = ReplicatedStorage:FindFirstChild("MenuToys")
 
-    local remote = ReplicatedStorage:FindFirstChild("MenuToys") 
-                   and ReplicatedStorage.MenuToys:FindFirstChild("SpawnToyRemoteFunction")
-    
-    if not remote then 
-        warn("RemoteFunctionが見つかりません")
-        return 
-    end
-
-    -- 【修正】変な方向を向かないよう、水平方向の正面を計算
-    -- root.CFrame.LookVector を使い、Y軸（上下）の影響を無視して水平に5～7スタッド前に出す
-    local forwardVector = root.CFrame.LookVector * Vector3.new(1, 0, 1)
-    local spawnPos = (root.Position + (forwardVector.Unit * 7)) + Vector3.new(0, 2, 0)
-    
-    -- 板が地面に埋まらないよう、少し上の角度に調整したCFrameを作成
-    local finalCFrame = CFrame.new(spawnPos)
-
-    -- 【修正】InvokeServerを別スレッドで実行し、ボタンが固まるのを防ぐ
-    task.spawn(function()
-        pcall(function()
-            remote:InvokeServer("PalletLightBrown", finalCFrame)
-        end)
-    end)
+if menuToys then
+	remoteEvent = menuToys:FindFirstChildWhichIsA("RemoteEvent")
 end
 
--- --- クリックイベント ---
--- Activatedが反応しない場合を考慮し、MouseButton1Clickも併用
-SpawnButton.MouseButton1Click:Connect(function()
-    -- 視覚フィードバック
-    SpawnButton.Text = "Spawning..."
-    SpawnButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    SpawnButton.TextColor3 = Color3.fromRGB(0, 0, 0)
-    
-    doSpawn()
-    
-    task.wait(0.1)
-    SpawnButton.Text = "Spawn Pallet"
-    SpawnButton.BackgroundColor3 = Color3.fromRGB(255, 85, 0)
-    SpawnButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+if not remoteEvent then
+	warn("Spawn用RemoteEventが見つかりません")
+	Button.Text = "Remote Error"
+	return
+end
+
+-- === スポーン処理 ===
+Button.Activated:Connect(function()
+	-- Toy名だけ送る（位置は送らない）
+	remoteEvent:FireServer("PalletLightBrown")
+
+	-- 視覚フィードバック
+	local old = Button.BackgroundColor3
+	Button.BackgroundColor3 = Color3.fromRGB(0,255,100)
+	task.delay(0.1, function()
+		Button.BackgroundColor3 = old
+	end)
 end)
 
-print("Spawner Script Fixed & Loaded.")
+print("Pallet Spawner Loaded (FTAP Safe Version)")
