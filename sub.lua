@@ -1,50 +1,43 @@
+-- Pallet Spawner UI + AutoSpawn (統合版)
+
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
-
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
--- --- 設定 ---
--- 注意: "PalletLightBrown" というIDが間違いの可能性があります。
--- まずはシンプルに "Pallet" を試してください。もしこれで出ない場合は名前を戻してください。
-local TOY_NAME = "Pallet" 
-local SPAWN_DISTANCE = 5 -- 自分の何スタッド前に出すか
-
--- --- GUIの初期化 (重複削除) ---
-if PlayerGui:FindFirstChild("PalletSpawnerUI_Fixed") then
-    PlayerGui.PalletSpawnerUI_Fixed:Destroy()
+-- 既存UI削除（重複防止）
+if PlayerGui:FindFirstChild("PalletSpawnerUI") then
+    PlayerGui.PalletSpawnerUI:Destroy()
 end
 
--- --- UI作成 ---
+-- ScreenGui作成
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "PalletSpawnerUI_Fixed"
+ScreenGui.Name = "PalletSpawnerUI"
 ScreenGui.ResetOnSpawn = false
--- 表示優先度を上げて、ゲームのUIの下に隠れないようにする
-ScreenGui.DisplayOrder = 10 
 ScreenGui.Parent = PlayerGui
 
 -- メインフレーム
 local Frame = Instance.new("Frame")
 Frame.Name = "MainFrame"
-Frame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 Frame.BorderSizePixel = 0
 Frame.AnchorPoint = Vector2.new(1, 0.5)
 Frame.Position = UDim2.new(1, -20, 0.5, 0)
-Frame.Size = UDim2.new(0, 120, 0, 50) -- 少し横幅を広げました
+Frame.Size = UDim2.new(0, 120, 0, 60)  -- 少し横幅広げて文字対応
 Frame.Parent = ScreenGui
 
 local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.CornerRadius = UDim.new(0, 10)
 UICorner.Parent = Frame
 
--- スポーンボタン
+-- ボタン
 local SpawnButton = Instance.new("TextButton")
 SpawnButton.Name = "SpawnBtn"
 SpawnButton.Parent = Frame
 SpawnButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-SpawnButton.Size = UDim2.new(1, -10, 1, -10)
-SpawnButton.Position = UDim2.new(0, 5, 0, 5)
+SpawnButton.Size = UDim2.new(1, -12, 1, -12)
+SpawnButton.Position = UDim2.new(0, 6, 0, 6)
 SpawnButton.Font = Enum.Font.GothamBold
 SpawnButton.Text = "Spawn Pallet"
 SpawnButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -52,59 +45,121 @@ SpawnButton.TextSize = 14
 SpawnButton.AutoButtonColor = true
 
 local ButtonCorner = Instance.new("UICorner")
-ButtonCorner.CornerRadius = UDim.new(0, 6)
+ButtonCorner.CornerRadius = UDim.new(0, 8)
 ButtonCorner.Parent = SpawnButton
 
--- --- パレットスポーン関数 ---
-local function spawnPallet()
-    -- task.spawnで別スレッド処理にすることで、UIのフリーズ(黒画面)を防ぐ
-    task.spawn(function()
-        local character = LocalPlayer.Character
-        if not character then return end
-        
-        local rootPart = character:FindFirstChild("HumanoidRootPart")
-        if not rootPart then return end
+-- Remote取得
+local SpawnRemote = ReplicatedStorage:WaitForChild("MenuToys"):WaitForChild("SpawnToyRemoteFunction")
+local toyName = "PalletLightBrown"
 
-        -- RemoteFunctionの場所を探す
-        local menuToys = ReplicatedStorage:FindFirstChild("MenuToys")
-        local remote = menuToys and menuToys:FindFirstChild("SpawnToyRemoteFunction")
+-- AutoSpawn状態
+local isAutoSpawning = false
+local autoConnection
 
-        if remote then
-            -- 自分の正面の位置を計算
-            local spawnCFrame = rootPart.CFrame * CFrame.new(0, 0, -SPAWN_DISTANCE)
+-- 単発スポーン関数
+local function spawnSingle()
+    local character = LocalPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then
+        SpawnButton.Text = "No Char!"
+        task.wait(1)
+        SpawnButton.Text = isAutoSpawning and "Auto ON" or "Spawn Pallet"
+        return
+    end
 
-            -- ボタンを「処理中」の色にする
-            SpawnButton.BackgroundColor3 = Color3.fromRGB(255, 170, 0)
-            SpawnButton.Text = "Spawning..."
+    local root = character.HumanoidRootPart
+    local spawnCFrame = root.CFrame * CFrame.new(0, 5, -8)  -- 目の前少し上
 
-            -- pcallを使ってエラーが発生してもゲーム全体を落とさないようにする
-            local success, result = pcall(function()
-                -- InvokeServerはサーバーからの返事を待つため時間がかかることがある
-                return remote:InvokeServer(TOY_NAME, spawnCFrame)
-            end)
+    local success, result = pcall(function()
+        return SpawnRemote:InvokeServer(toyName, spawnCFrame)
+    end)
 
-            if success then
-                SpawnButton.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
-                SpawnButton.Text = "Success!"
-            else
-                warn("スポーンエラー: " .. tostring(result))
-                SpawnButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-                SpawnButton.Text = "Failed"
+    if success then
+        -- 成功フィードバック
+        SpawnButton.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
+        SpawnButton.Text = "Success!"
+        task.wait(0.4)
+    else
+        SpawnButton.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+        SpawnButton.Text = "Error!"
+        task.wait(0.8)
+    end
+
+    -- 文字と色を戻す
+    if not isAutoSpawning then
+        SpawnButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+        SpawnButton.Text = "Spawn Pallet"
+    end
+end
+
+-- AutoSpawnループ開始
+local function startAuto()
+    isAutoSpawning = true
+    SpawnButton.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
+    SpawnButton.Text = "Auto ON"
+
+    autoConnection = game:GetService("RunService").Heartbeat:Connect(function()
+        if not isAutoSpawning then return end
+        pcall(function()
+            local character = LocalPlayer.Character
+            if character and character:FindFirstChild("HumanoidRootPart") then
+                local cf = character.HumanoidRootPart.CFrame * CFrame.new(0, 5, -8)
+                SpawnRemote:InvokeServer(toyName, cf)
             end
-
-            -- 0.8秒後にボタンを戻す
-            task.wait(0.8)
-            SpawnButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-            SpawnButton.Text = "Spawn Pallet"
-        else
-            warn("RemoteFunctionが見つかりません: ReplicatedStorage.MenuToys.SpawnToyRemoteFunction")
-            SpawnButton.Text = "Remote Missing"
-        end
+        end)
+        task.wait(0.7)  -- スポーン間隔（調整可能）
     end)
 end
 
--- --- イベント接続 ---
-SpawnButton.Activated:Connect(spawnPallet)
+-- AutoSpawn停止
+local function stopAuto()
+    isAutoSpawning = false
+    if autoConnection then
+        autoConnection:Disconnect()
+        autoConnection = nil
+    end
+    SpawnButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+    SpawnButton.Text = "Spawn Pallet"
+end
 
--- 完了通知
-print("Fixed Pallet Spawner Loaded!")
+-- 長押し検知（Auto切り替え）
+local pressing = false
+local pressTime = 0
+local LONG_PRESS_TIME = 0.7
+
+SpawnButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        pressing = true
+        pressTime = 0
+
+        -- 長押し監視
+        spawn(function()
+            while pressing and pressTime < LONG_PRESS_TIME do
+                task.wait(0.1)
+                pressTime += 0.1
+            end
+
+            if pressing and pressTime >= LONG_PRESS_TIME then
+                if isAutoSpawning then
+                    stopAuto()
+                else
+                    startAuto()
+                end
+            end
+        end)
+    end
+end)
+
+SpawnButton.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if pressing and pressTime < LONG_PRESS_TIME then
+            -- 短押し = 1回だけスポーン
+            spawnSingle()
+        end
+        pressing = false
+    end
+end)
+
+-- 初回メッセージ
+print("Pallet Spawner UI Loaded!")
+print("短押し → 1個スポーン")
+print("長押し(0.7秒) → Auto ON/OFF切り替え")
